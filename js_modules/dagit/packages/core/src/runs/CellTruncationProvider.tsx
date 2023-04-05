@@ -4,6 +4,8 @@ import styled from 'styled-components/macro';
 
 import {showCustomAlert} from '../app/CustomAlertProvider';
 
+import { useState, useRef, useEffect, useCallback } from 'react';
+
 const OverflowFade = styled.div`
   position: absolute;
   bottom: 0;
@@ -50,72 +52,63 @@ const OverflowButton = styled.button`
   }
 `;
 
-export class CellTruncationProvider extends React.Component<
-  {
-    style: React.CSSProperties;
-    onExpand?: () => void;
-    forceExpandability?: boolean;
-  },
-  {isOverflowing: boolean}
-> {
-  state = {
-    isOverflowing: false,
-  };
+const CellTruncationProvider = props => {
+  const {
+    onExpand
+  } = props;
 
-  private contentContainerRef: React.RefObject<HTMLDivElement> = React.createRef();
+  const [isOverflowing, setIsOverflowing] = useState(false);
 
-  componentDidMount() {
-    this.detectOverflow();
-  }
+  useEffect(() => {
+    detectOverflowHandler();
+  }, []);
 
-  componentDidUpdate() {
-    this.detectOverflow();
-  }
+  useEffect(() => {
+    detectOverflowHandler();
+  }, []);
 
-  detectOverflow() {
+  const detectOverflowHandler = useCallback(() => {
     const child =
-      this.contentContainerRef.current && this.contentContainerRef.current.firstElementChild;
+      contentContainerRefHandler.current && contentContainerRefHandler.current.firstElementChild;
 
     if (!child) {
       return;
     }
 
     const isOverflowing =
-      typeof this.props.style.height === 'number' && child.scrollHeight > this.props.style.height;
-    if (isOverflowing !== this.state.isOverflowing) {
-      this.setState({isOverflowing});
+      typeof props.style.height === 'number' && child.scrollHeight > props.style.height;
+    if (isOverflowing !== isOverflowing) {
+      setIsOverflowing(isOverflowing);
     }
-  }
+  }, []);
 
-  defaultExpand() {
+  const defaultExpandHandler = useCallback(() => {
     const message =
-      this.contentContainerRef.current && this.contentContainerRef.current.textContent;
+      contentContainerRefHandler.current && contentContainerRefHandler.current.textContent;
     message &&
       showCustomAlert({
         body: <div style={{whiteSpace: 'pre-wrap'}}>{message}</div>,
       });
-  }
+  }, []);
 
-  onView = () => {
-    const {onExpand} = this.props;
-    onExpand ? onExpand() : this.defaultExpand();
-  };
+  const onViewHandler = useCallback(() => {
+    onExpand ? onExpand() : defaultExpandHandler();
+  }, []);
 
-  render() {
-    const style = {...this.props.style, overflow: 'hidden'};
+  const contentContainerRef = useRef(React.createRef());
+  const style = {...props.style, overflow: 'hidden'};
 
-    return (
-      <div style={style}>
-        <div ref={this.contentContainerRef}>{this.props.children}</div>
-        {(this.state.isOverflowing || this.props.forceExpandability) && (
-          <>
-            <OverflowFade />
-            <OverflowButtonContainer>
-              <OverflowButton onClick={this.onView}>View full message</OverflowButton>
-            </OverflowButtonContainer>
-          </>
-        )}
-      </div>
-    );
-  }
-}
+  return (
+    <div style={style}>
+      <div ref={contentContainerRefHandler}>{props.children}</div>
+      {(isOverflowing || props.forceExpandability) && (
+        <>
+          <OverflowFade />
+          <OverflowButtonContainer>
+            <OverflowButton onClick={onViewHandler}>View full message</OverflowButton>
+          </OverflowButtonContainer>
+        </>
+      )}
+    </div>
+  );
+};

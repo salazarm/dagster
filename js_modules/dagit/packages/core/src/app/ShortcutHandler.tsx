@@ -5,6 +5,8 @@ import styled from 'styled-components/macro';
 
 import {getJSONForKey} from '../hooks/useStateWithStorage';
 
+import { useState, useEffect, useCallback } from 'react';
+
 export const SHORTCUTS_STORAGE_KEY = 'keyboard-shortcuts-enabled';
 
 const MODIFIER_KEYS = [
@@ -94,26 +96,33 @@ interface ShortcutHandlerState {
   previewPosition: null | {left: number; top: number};
 }
 
-export class ShortcutHandler extends React.Component<ShortcutHandlerProps, ShortcutHandlerState> {
-  state: ShortcutHandlerState = {
-    previewPosition: null,
-  };
+const ShortcutHandler = props => {
+  const [previewPosition, setPreviewPosition] = useState();
 
-  componentDidMount() {
+  const {
+    children,
+    shortcutLabel
+  } = props;
+
+  const [previewPosition, setPreviewPosition] = useState(null);
+
+  useEffect(() => {
     const shortcutsEnabled = getJSONForKey(SHORTCUTS_STORAGE_KEY);
     if (shortcutsEnabled || shortcutsEnabled === undefined) {
-      window.addEventListener('keydown', this.onGlobalKeydown);
-      window.addEventListener(SHORTCUT_VISIBILITY_EVENT_TYPE, this.onShortcutVisiblityChange);
-      this.onShortcutVisiblityChange();
+      window.addEventListener('keydown', onGlobalKeydownHandler);
+      window.addEventListener(SHORTCUT_VISIBILITY_EVENT_TYPE, onShortcutVisiblityChangeHandler);
+      onShortcutVisiblityChangeHandler();
     }
-  }
+  }, []);
 
-  componentWillUnmount() {
-    window.removeEventListener('keydown', this.onGlobalKeydown);
-    window.removeEventListener(SHORTCUT_VISIBILITY_EVENT_TYPE, this.onShortcutVisiblityChange);
-  }
+  useEffect(() => {
+    return () => {
+      window.removeEventListener('keydown', onGlobalKeydownHandler);
+      window.removeEventListener(SHORTCUT_VISIBILITY_EVENT_TYPE, onShortcutVisiblityChangeHandler);
+    };
+  });
 
-  onShortcutVisiblityChange = () => {
+  const onShortcutVisiblityChangeHandler = useCallback(() => {
     if (getShortcutsVisible()) {
       // Deprecated one day, but not likely to be soon? Alternative is to React.cloneElement
       // and attach a ref prop to `children` without wrapping it in another DOM node, but
@@ -135,18 +144,16 @@ export class ShortcutHandler extends React.Component<ShortcutHandlerProps, Short
       ) {
         return;
       }
-      this.setState({
-        previewPosition: {
-          left: rect.left + rect.width,
-          top: rect.top + rect.height,
-        },
+      setPreviewPosition({
+        left: rect.left + rect.width,
+        top: rect.top + rect.height,
       });
-    } else if (this.state.previewPosition !== null) {
-      this.setState({previewPosition: null});
+    } else if (previewPosition !== null) {
+      setPreviewPosition(null);
     }
-  };
+  }, []);
 
-  onGlobalKeydown = (event: KeyboardEvent) => {
+  const onGlobalKeydownHandler = useCallback((event: KeyboardEvent) => {
     const {target} = event;
 
     const inTextInput =
@@ -158,9 +165,9 @@ export class ShortcutHandler extends React.Component<ShortcutHandlerProps, Short
       return;
     }
 
-    this.props.onGlobalKeyDown?.(event);
+    props.onGlobalKeyDown?.(event);
 
-    if (this.props.onShortcut && this.props.shortcutFilter && this.props.shortcutFilter(event)) {
+    if (props.onShortcut && props.shortcutFilter && props.shortcutFilter(event)) {
       event.preventDefault();
 
       // Pull the focus out of the currently focused field (if there is one). This better
@@ -171,27 +178,22 @@ export class ShortcutHandler extends React.Component<ShortcutHandlerProps, Short
         document.activeElement.blur();
       }
 
-      this.props.onShortcut(event);
+      props.onShortcut(event);
     }
-  };
+  }, []);
 
-  render() {
-    const {children, shortcutLabel} = this.props;
-    const {previewPosition} = this.state;
-
-    if (shortcutLabel && previewPosition) {
-      return (
-        <>
-          {children}
-          <ShortcutAnnotation style={{top: previewPosition.top, left: previewPosition.left}}>
-            {shortcutLabel}
-          </ShortcutAnnotation>
-        </>
-      );
-    }
-    return <>{children}</>;
+  if (shortcutLabel && previewPosition) {
+    return (
+      <>
+        {children}
+        <ShortcutAnnotation style={{top: previewPosition.top, left: previewPosition.left}}>
+          {shortcutLabel}
+        </ShortcutAnnotation>
+      </>
+    );
   }
-}
+  return <>{children}</>;
+};
 
 const ShortcutAnnotation = styled.div`
   position: fixed;

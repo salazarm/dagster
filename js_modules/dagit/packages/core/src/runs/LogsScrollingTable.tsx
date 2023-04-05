@@ -18,6 +18,8 @@ import {eventTypeToDisplayType} from './getRunFilterProviders';
 import {logNodeLevel} from './logNodeLevel';
 import {RunDagsterRunEventFragment} from './types/RunFragments.types';
 
+import { useRef, useCallback, useEffect, useState } from 'react';
+
 const LOGS_PADDING_BOTTOM = 50;
 
 interface ILogsScrollingTableProps {
@@ -129,72 +131,69 @@ export const LOGS_SCROLLING_TABLE_MESSAGE_FRAGMENT = gql`
   ${LOGS_ROW_UNSTRUCTURED_FRAGMENT}
 `;
 
-class LogsScrollingTableSized extends React.Component<ILogsScrollingTableSizedProps> {
-  list = React.createRef<List>();
+const LogsScrollingTableSized = (props: ILogsScrollingTableSizedProps) => {
+  const {
+    filteredNodes,
+    height,
+    loading,
+    width
+  } = props;
 
-  get listEl() {
+  useEffect(() => {
+    attachScrollToBottomObserverHandler();
+    if (props.focusedTime) {
+      window.requestAnimationFrame(() => {
+        scrollToTimeHandler(props.focusedTime);
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (scrollToBottomObserverHandler) {
+        scrollToBottomObserverHandler.disconnect();
+      }
+    };
+  });
+
+  useEffect(() => {
+    if (!listHandler.current) {
+      return;
+    }
+
+    if (props.width !== prevProps.width) {
+      didResizeHandler();
+    }
+    if (props.filterKey !== prevProps.filterKey) {
+      listHandler.current.recomputeGridSize();
+    }
+
+    if (
+      props.focusedTime &&
+      props.filteredNodes?.length !== prevProps.filteredNodes?.length
+    ) {
+      window.requestAnimationFrame(() => {
+        scrollToTimeHandler(props.focusedTime);
+      });
+    }
+  }, []);
+
+  const listElHandler = useCallback(() => {
     // eslint-disable-next-line react/no-find-dom-node
-    const el = this.list.current && ReactDOM.findDOMNode(this.list.current);
+    const el = listHandler.current && ReactDOM.findDOMNode(listHandler.current);
     if (!(el instanceof HTMLElement)) {
       return null;
     }
     return el;
-  }
+  }, []);
 
-  cache = new CellMeasurerCache({
-    defaultHeight: 30,
-    fixedWidth: true,
-    keyMapper: (rowIndex) =>
-      this.props.filteredNodes ? this.props.filteredNodes[rowIndex].clientsideKey : '',
-  });
+  const didResizeHandler = useCallback(() => {
+    cacheHandler.clearAll();
+    forceUpdateHandler();
+  }, []);
 
-  isAtBottomOrZero = true;
-  scrollToBottomObserver: MutationObserver | null = null;
-
-  componentDidMount() {
-    this.attachScrollToBottomObserver();
-    if (this.props.focusedTime) {
-      window.requestAnimationFrame(() => {
-        this.scrollToTime(this.props.focusedTime);
-      });
-    }
-  }
-
-  componentDidUpdate(prevProps: ILogsScrollingTableSizedProps) {
-    if (!this.list.current) {
-      return;
-    }
-
-    if (this.props.width !== prevProps.width) {
-      this.didResize();
-    }
-    if (this.props.filterKey !== prevProps.filterKey) {
-      this.list.current.recomputeGridSize();
-    }
-
-    if (
-      this.props.focusedTime &&
-      this.props.filteredNodes?.length !== prevProps.filteredNodes?.length
-    ) {
-      window.requestAnimationFrame(() => {
-        this.scrollToTime(this.props.focusedTime);
-      });
-    }
-  }
-
-  componentWillUnmount() {
-    if (this.scrollToBottomObserver) {
-      this.scrollToBottomObserver.disconnect();
-    }
-  }
-
-  didResize() {
-    this.cache.clearAll();
-    this.forceUpdate();
-  }
-
-  attachScrollToBottomObserver() {
-    const el = this.listEl;
+  const attachScrollToBottomObserverHandler = useCallback(() => {
+    const el = listElHandler;
     if (!el) {
       console.warn(`No container, LogsScrollingTable must render listEl`);
       return;
@@ -202,7 +201,7 @@ class LogsScrollingTableSized extends React.Component<ILogsScrollingTableSizedPr
 
     let lastHeight: string | null = null;
 
-    this.scrollToBottomObserver = new MutationObserver(() => {
+    scrollToBottomObserverHandler = new MutationObserver(() => {
       const rowgroupEl = el.querySelector('[role=rowgroup]') as HTMLElement;
       if (!rowgroupEl) {
         lastHeight = null;
@@ -211,7 +210,7 @@ class LogsScrollingTableSized extends React.Component<ILogsScrollingTableSizedPr
       if (rowgroupEl.style.height === lastHeight) {
         return;
       }
-      if (!this.isAtBottomOrZero) {
+      if (!isAtBottomOrZeroHandler) {
         return;
       }
 
@@ -219,13 +218,13 @@ class LogsScrollingTableSized extends React.Component<ILogsScrollingTableSizedPr
       el.scrollTop = el.scrollHeight - el.clientHeight;
     });
 
-    this.scrollToBottomObserver.observe(el, {
+    scrollToBottomObserverHandler.observe(el, {
       attributes: true,
       subtree: true,
     });
-  }
+  }, []);
 
-  onScroll = ({scrollTop, scrollHeight, clientHeight}: ScrollParams) => {
+  const onScrollHandler = useCallback(({scrollTop, scrollHeight, clientHeight}: ScrollParams) => {
     const atTopAndStarting = scrollTop === 0 && scrollHeight <= clientHeight;
 
     // Note: The distance to the bottom can go negative if you scroll into the padding at the bottom of the list.
@@ -233,25 +232,25 @@ class LogsScrollingTableSized extends React.Component<ILogsScrollingTableSizedPr
     const distanceToBottom = scrollHeight - clientHeight - scrollTop;
     const atBottom = distanceToBottom < 5;
 
-    this.isAtBottomOrZero = atTopAndStarting || atBottom;
-  };
+    isAtBottomOrZeroHandler = atTopAndStarting || atBottom;
+  }, []);
 
-  scrollToTime = (ms: number) => {
-    if (!this.props.filteredNodes || !this.list.current) {
+  const scrollToTimeHandler = useCallback((ms: number) => {
+    if (!props.filteredNodes || !listHandler.current) {
       return;
     }
 
     // Stop the table from attempting to return to the bottom-of-feed
     // if more logs arrive.
-    this.isAtBottomOrZero = false;
+    isAtBottomOrZeroHandler = false;
 
     // Find the row immediately at or after the provided timestamp
     const target: {index: number; alignment: 'center'} = {
-      index: this.props.filteredNodes.findIndex((n) => Number(n.timestamp) >= ms),
+      index: props.filteredNodes.findIndex((n) => Number(n.timestamp) >= ms),
       alignment: 'center',
     };
     if (target.index === -1) {
-      target.index = this.props.filteredNodes.length - 1;
+      target.index = props.filteredNodes.length - 1;
     }
 
     // Move to the offset. For some reason, this takes multiple iterations but not multiple renders.
@@ -259,29 +258,29 @@ class LogsScrollingTableSized extends React.Component<ILogsScrollingTableSizedPr
     // the number gets more accurate as we scroll, which is very annoying.
     let offset = 0;
     let iterations = 0;
-    while (offset !== this.list.current.getOffsetForRow(target)) {
-      offset = this.list.current.getOffsetForRow(target);
-      this.list.current.scrollToPosition(offset);
+    while (offset !== listHandler.current.getOffsetForRow(target)) {
+      offset = listHandler.current.getOffsetForRow(target);
+      listHandler.current.scrollToPosition(offset);
       iterations += 1;
       if (iterations > 20) {
         break;
       }
     }
-  };
+  }, []);
 
-  rowRenderer = ({parent, index, style}: ListRowProps) => {
-    if (!this.props.filteredNodes) {
+  const rowRendererHandler = useCallback(({parent, index, style}: ListRowProps) => {
+    if (!props.filteredNodes) {
       return;
     }
-    const node = this.props.filteredNodes[index];
-    const focusedTimeMatch = Number(node.timestamp) === this.props.focusedTime;
-    const textMatch = !!this.props.textMatchNodes?.includes(node);
+    const node = props.filteredNodes[index];
+    const focusedTimeMatch = Number(node.timestamp) === props.focusedTime;
+    const textMatch = !!props.textMatchNodes?.includes(node);
 
-    const metadata = this.props.metadata;
+    const metadata = props.metadata;
     if (!node) {
       return <span />;
     }
-    const isLastRow = index === this.props.filteredNodes.length - 1;
+    const isLastRow = index === props.filteredNodes.length - 1;
     const lastRowStyles = isLastRow
       ? {
           borderBottom: `1px solid ${Colors.Gray100}`,
@@ -289,112 +288,118 @@ class LogsScrollingTableSized extends React.Component<ILogsScrollingTableSizedPr
       : {};
 
     return (
-      <CellMeasurer cache={this.cache} index={index} parent={parent} key={node.clientsideKey}>
+      <CellMeasurer cache={cacheHandler} index={index} parent={parent} key={node.clientsideKey}>
         {node.__typename === 'LogMessageEvent' ? (
           <Unstructured
             node={node}
             metadata={metadata}
-            style={{...style, width: this.props.width, ...lastRowStyles}}
+            style={{...style, width: props.width, ...lastRowStyles}}
             highlighted={textMatch || focusedTimeMatch}
           />
         ) : (
           <Structured
             node={node}
             metadata={metadata}
-            style={{...style, width: this.props.width, ...lastRowStyles}}
+            style={{...style, width: props.width, ...lastRowStyles}}
             highlighted={textMatch || focusedTimeMatch}
           />
         )}
       </CellMeasurer>
     );
-  };
+  }, []);
 
-  noContentRenderer = () => {
-    if (this.props.filteredNodes) {
+  const noContentRendererHandler = useCallback(() => {
+    if (props.filteredNodes) {
       return <NonIdealState icon="no-results" title="No logs to display" />;
     }
     return <span />;
-  };
+  }, []);
 
-  render() {
-    const {filteredNodes, height, loading, width} = this.props;
-    return (
-      <div>
-        {loading ? (
-          <ListEmptyState>
-            <NonIdealState icon="spinner" title="Fetching logs..." />
-          </ListEmptyState>
-        ) : null}
-        <List
-          ref={this.list}
-          deferredMeasurementCache={this.cache}
-          rowCount={filteredNodes?.length || 0}
-          noContentRenderer={this.noContentRenderer}
-          rowHeight={this.cache.rowHeight}
-          rowRenderer={this.rowRenderer}
-          width={width}
-          height={height}
-          overscanRowCount={10}
-          style={{paddingBottom: LOGS_PADDING_BOTTOM}}
-          onScroll={this.onScroll}
-        />
-      </div>
-    );
+  const list = useRef(React.createRef<List>());
+
+  const cache = useRef(new CellMeasurerCache({
+    defaultHeight: 30,
+    fixedWidth: true,
+    keyMapper: (rowIndex) =>
+      props.filteredNodes ? props.filteredNodes[rowIndex].clientsideKey : '',
+  }));
+
+  const isAtBottomOrZero = useRef(true);
+  const scrollToBottomObserver = useRef(null);
+  return (
+    <div>
+      {loading ? (
+        <ListEmptyState>
+          <NonIdealState icon="spinner" title="Fetching logs..." />
+        </ListEmptyState>
+      ) : null}
+      <List
+        ref={listHandler}
+        deferredMeasurementCache={cacheHandler}
+        rowCount={filteredNodes?.length || 0}
+        noContentRenderer={noContentRendererHandler}
+        rowHeight={cacheHandler.rowHeight}
+        rowRenderer={rowRendererHandler}
+        width={width}
+        height={height}
+        overscanRowCount={10}
+        style={{paddingBottom: LOGS_PADDING_BOTTOM}}
+        onScroll={onScrollHandler}
+      />
+    </div>
+  );
+};
+
+const AutoSizer = (
+  props: {
+    children: (size: {width: number; height: number}) => React.ReactNode;
   }
-}
+) => {
+  const [width, setWidth] = useState(0);
+  const [height, setHeight] = useState(0);
 
-class AutoSizer extends React.Component<{
-  children: (size: {width: number; height: number}) => React.ReactNode;
-}> {
-  state = {
-    width: 0,
-    height: 0,
-  };
-
-  resizeObserver: any | undefined;
-
-  componentDidMount() {
-    this.measure();
+  useEffect(() => {
+    measureHandler();
 
     // eslint-disable-next-line react/no-find-dom-node
     const el = ReactDOM.findDOMNode(this);
     if (el && el instanceof HTMLElement && 'ResizeObserver' in window) {
       const RO = window['ResizeObserver'] as any;
-      this.resizeObserver = new RO((entries: any) => {
-        this.setState({
-          width: entries[0].contentRect.width,
-          height: entries[0].contentRect.height,
-        });
+      resizeObserverHandler = new RO((entries: any) => {
+        setWidth(entries[0].contentRect.width);
+        setHeight(entries[0].contentRect.height);
       });
-      this.resizeObserver.observe(el);
+      resizeObserverHandler.observe(el);
     }
-  }
+  }, []);
 
-  componentDidUpdate() {
-    this.measure();
-  }
+  useEffect(() => {
+    return () => {
+      if (resizeObserverHandler) {
+        resizeObserverHandler.disconnect();
+      }
+    };
+  });
 
-  componentWillUnmount() {
-    if (this.resizeObserver) {
-      this.resizeObserver.disconnect();
-    }
-  }
+  useEffect(() => {
+    measureHandler();
+  }, []);
 
-  measure() {
+  const measureHandler = useCallback(() => {
     // eslint-disable-next-line react/no-find-dom-node
     const el = ReactDOM.findDOMNode(this);
     if (!el || !(el instanceof HTMLElement)) {
       return;
     }
-    if (el.clientWidth !== this.state.width || el.clientHeight !== this.state.height) {
-      this.setState({width: el.clientWidth, height: el.clientHeight});
+    if (el.clientWidth !== width || el.clientHeight !== height) {
+      setWidth(el.clientWidth);
+      setHeight(el.clientHeight);
     }
-  }
+  }, []);
 
-  render() {
-    return <div style={{width: '100%', height: '100%'}}>{this.props.children(this.state)}</div>;
-  }
-}
+  const resizeObserver = useRef(null);
+  return <div style={{width: '100%', height: '100%'}}>{props.children(stateHandler)}</div>;
+};
 
 const ListEmptyState = styled.div`
   background-color: rgba(255, 255, 255, 0.7);
