@@ -13,6 +13,8 @@ import {OpLayout} from './asyncGraphLayout';
 import {Edge, position} from './common';
 import {OpNodeInvocationFragment, OpNodeDefinitionFragment} from './types/OpNode.types';
 
+import { useCallback } from 'react';
+
 interface IOpNodeProps {
   layout: OpLayout;
   invocation?: OpNodeInvocationFragment;
@@ -33,160 +35,167 @@ const TOOLTIP_STYLE = JSON.stringify({
   left: 5,
 });
 
-export class OpNode extends React.Component<IOpNodeProps> {
-  shouldComponentUpdate(prevProps: IOpNodeProps) {
-    if (prevProps.dim !== this.props.dim) {
+const OpNode = (props: IOpNodeProps) => {
+  const {
+    definition,
+    invocation,
+    layout,
+    dim,
+    focused,
+    selected,
+    minified
+  } = props;
+
+  const shouldComponentUpdateHandler = useCallback((prevProps: IOpNodeProps) => {
+    if (prevProps.dim !== props.dim) {
       return true;
     }
-    if (prevProps.selected !== this.props.selected) {
+    if (prevProps.selected !== props.selected) {
       return true;
     }
-    if (prevProps.focused !== this.props.focused) {
+    if (prevProps.focused !== props.focused) {
       return true;
     }
-    if (prevProps.minified !== this.props.minified) {
+    if (prevProps.minified !== props.minified) {
       return true;
     }
-    if (prevProps.highlightedEdges !== this.props.highlightedEdges) {
+    if (prevProps.highlightedEdges !== props.highlightedEdges) {
       return true;
     }
-    if (prevProps.layout !== this.props.layout) {
+    if (prevProps.layout !== props.layout) {
       return true;
     }
     if (
       (prevProps.invocation && prevProps.invocation.name) !==
-      (this.props.invocation && this.props.invocation.name)
+      (props.invocation && props.invocation.name)
     ) {
       return true;
     }
     return false;
-  }
+  }, []);
 
-  handleClick = (e: React.MouseEvent) => {
+  const handleClickHandler = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    this.props.onClick();
-  };
+    props.onClick();
+  }, []);
 
-  handleDoubleClick = (e: React.MouseEvent) => {
+  const handleDoubleClickHandler = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    this.props.onDoubleClick();
-  };
+    props.onDoubleClick();
+  }, []);
 
-  handleEnterComposite = (e: React.MouseEvent) => {
+  const handleEnterCompositeHandler = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    this.props.onEnterComposite();
-  };
+    props.onEnterComposite();
+  }, []);
 
-  handleKindClicked = (e: React.MouseEvent) => {
-    this.handleClick(e);
+  const handleKindClickedHandler = useCallback((e: React.MouseEvent) => {
+    handleClickHandler(e);
     window.requestAnimationFrame(() => document.dispatchEvent(new Event('show-kind-info')));
-  };
+  }, []);
 
-  public render() {
-    const {definition, invocation, layout, dim, focused, selected, minified} = this.props;
-    const {metadata} = definition;
-    if (!layout) {
-      throw new Error(`Layout is missing for ${definition.name}`);
-    }
-
-    let configField = null;
-    if (definition.__typename === 'SolidDefinition') {
-      configField = definition.configField;
-    }
-
-    const tags: IOpTag[] = [];
-
-    const kind = metadata.find((m) => m.key === 'kind');
-    const composite = definition.__typename === 'CompositeSolidDefinition';
-
-    if (kind) {
-      tags.push({label: kind.value, onClick: this.handleKindClicked});
-    }
-    if (composite) {
-      tags.push({label: 'Expand', onClick: this.handleEnterComposite});
-    }
-
-    const label = invocation ? invocation.name : definition.name;
-
-    return (
-      <NodeContainer
-        $minified={minified}
-        $selected={selected}
-        $secondaryHighlight={focused}
-        $dim={dim}
-        onClick={this.handleClick}
-        onDoubleClick={this.handleDoubleClick}
-      >
-        <div className="highlight-box" style={{...position(layout.bounds)}} />
-        {composite && <div className="composite-marker" style={{...position(layout.op)}} />}
-
-        {invocation?.isDynamicMapped && (
-          <div className="dynamic-marker" style={{...position(layout.op)}} />
-        )}
-
-        {configField && configField.configType.key !== 'Any' && (
-          <div
-            className="config-marker"
-            style={{left: layout.op.x + layout.op.width, top: layout.op.y}}
-          >
-            {minified ? 'C' : 'Config'}
-          </div>
-        )}
-
-        {definition.inputDefinitions.map((item, idx) => (
-          <OpIOBox
-            {...this.props}
-            {...metadataForIO(item, invocation)}
-            key={idx}
-            item={item}
-            layoutInfo={layout.inputs[item.name]}
-            colorKey="input"
-          />
-        ))}
-
-        <div className="node-box" style={{...position(layout.op)}}>
-          <div className="name">
-            {!minified && <Icon name="op" size={16} />}
-            <div className="label" data-tooltip={label} data-tooltip-style={TOOLTIP_STYLE}>
-              {withMiddleTruncation(label, {maxLength: 48})}
-            </div>
-          </div>
-          {!minified && (definition.description || definition.assetNodes.length === 0) && (
-            <div className="description">{(definition.description || '').split('\n')[0]}</div>
-          )}
-          {!minified && definition.assetNodes.length > 0 && (
-            <OpNodeAssociatedAssets nodes={definition.assetNodes} />
-          )}
-        </div>
-
-        {tags.length > 0 && (
-          <OpTags
-            tags={tags}
-            style={{
-              left: layout.op.x + layout.op.width,
-              top: layout.op.y + layout.op.height,
-              transform: 'translate(-100%, 3px)',
-            }}
-          />
-        )}
-
-        {definition.outputDefinitions.map((item, idx) => (
-          <OpIOBox
-            {...this.props}
-            {...metadataForIO(item, invocation)}
-            key={idx}
-            item={item}
-            layoutInfo={layout.outputs[item.name]}
-            colorKey="output"
-          />
-        ))}
-      </NodeContainer>
-    );
+  const {metadata} = definition;
+  if (!layout) {
+    throw new Error(`Layout is missing for ${definition.name}`);
   }
-}
+
+  let configField = null;
+  if (definition.__typename === 'SolidDefinition') {
+    configField = definition.configField;
+  }
+
+  const tags: IOpTag[] = [];
+
+  const kind = metadata.find((m) => m.key === 'kind');
+  const composite = definition.__typename === 'CompositeSolidDefinition';
+
+  if (kind) {
+    tags.push({label: kind.value, onClick: handleKindClickedHandler});
+  }
+  if (composite) {
+    tags.push({label: 'Expand', onClick: handleEnterCompositeHandler});
+  }
+
+  const label = invocation ? invocation.name : definition.name;
+
+  return (
+    <NodeContainer
+      $minified={minified}
+      $selected={selected}
+      $secondaryHighlight={focused}
+      $dim={dim}
+      onClick={handleClickHandler}
+      onDoubleClick={handleDoubleClickHandler}
+    >
+      <div className="highlight-box" style={{...position(layout.bounds)}} />
+      {composite && <div className="composite-marker" style={{...position(layout.op)}} />}
+
+      {invocation?.isDynamicMapped && (
+        <div className="dynamic-marker" style={{...position(layout.op)}} />
+      )}
+
+      {configField && configField.configType.key !== 'Any' && (
+        <div
+          className="config-marker"
+          style={{left: layout.op.x + layout.op.width, top: layout.op.y}}
+        >
+          {minified ? 'C' : 'Config'}
+        </div>
+      )}
+
+      {definition.inputDefinitions.map((item, idx) => (
+        <OpIOBox
+          {...props}
+          {...metadataForIO(item, invocation)}
+          key={idx}
+          item={item}
+          layoutInfo={layout.inputs[item.name]}
+          colorKey="input"
+        />
+      ))}
+
+      <div className="node-box" style={{...position(layout.op)}}>
+        <div className="name">
+          {!minified && <Icon name="op" size={16} />}
+          <div className="label" data-tooltip={label} data-tooltip-style={TOOLTIP_STYLE}>
+            {withMiddleTruncation(label, {maxLength: 48})}
+          </div>
+        </div>
+        {!minified && (definition.description || definition.assetNodes.length === 0) && (
+          <div className="description">{(definition.description || '').split('\n')[0]}</div>
+        )}
+        {!minified && definition.assetNodes.length > 0 && (
+          <OpNodeAssociatedAssets nodes={definition.assetNodes} />
+        )}
+      </div>
+
+      {tags.length > 0 && (
+        <OpTags
+          tags={tags}
+          style={{
+            left: layout.op.x + layout.op.width,
+            top: layout.op.y + layout.op.height,
+            transform: 'translate(-100%, 3px)',
+          }}
+        />
+      )}
+
+      {definition.outputDefinitions.map((item, idx) => (
+        <OpIOBox
+          {...props}
+          {...metadataForIO(item, invocation)}
+          key={idx}
+          item={item}
+          layoutInfo={layout.outputs[item.name]}
+          colorKey="output"
+        />
+      ))}
+    </NodeContainer>
+  );
+};
 
 const OpNodeAssociatedAssets: React.FC<{nodes: {assetKey: AssetKey}[]}> = ({nodes}) => {
   const more = nodes.length > 1 ? ` + ${nodes.length - 1} more` : '';

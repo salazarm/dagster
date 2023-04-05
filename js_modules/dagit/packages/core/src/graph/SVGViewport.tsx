@@ -8,6 +8,8 @@ import styled from 'styled-components/macro';
 import {IBounds} from './common';
 import {makeSVGPortable} from './makeSVGPortable';
 
+import { useRef, useState, useEffect, useCallback } from 'react';
+
 export interface SVGViewportInteractor {
   onMouseDown(viewport: SVGViewport, event: React.MouseEvent<HTMLDivElement>): void;
   onWheel(viewport: SVGViewport, event: WheelEvent): void;
@@ -225,85 +227,86 @@ const NoneInteractor: SVGViewportInteractor = {
   },
 };
 
-export class SVGViewport extends React.Component<SVGViewportProps, SVGViewportState> {
-  static Interactors = {
-    PanAndZoom: PanAndZoomInteractor,
-    None: NoneInteractor,
-  };
-
-  static defaultProps = {
+const SVGViewport = inputProps => {
+  const props = {
     maxZoom: DEFAULT_ZOOM,
     maxAutocenterZoom: DEFAULT_MAX_AUTOCENTER_ZOOM,
+    ...inputProps
   };
 
-  element: React.RefObject<HTMLDivElement> = React.createRef();
-  panzoom: any;
+  const [x, setX] = useState();
+  const [y, setY] = useState();
+  const [scale, setScale] = useState();
+  const [scale, setScale] = useState();
+  const [x, setX] = useState();
+  const [y, setY] = useState();
+  const [scale, setScale] = useState();
 
-  _animation: any = null;
-  _lastWheelTime = 0;
-  _lastWheelDir = 0;
+  const {
+    children,
+    onClick,
+    interactor
+  } = props;
 
-  state = {
-    x: 0,
-    y: 0,
-    scale: DETAIL_ZOOM,
-    minScale: 0,
-  };
+  const [x, setX] = useState(0);
+  const [y, setY] = useState(0);
+  const [scale, setScale] = useState(DETAIL_ZOOM);
+  const [minScale, setMinScale] = useState(0);
 
-  resizeObserver: any | undefined;
-
-  componentDidMount() {
-    this.autocenter();
+  useEffect(() => {
+    autocenterHandler();
 
     // The wheel event cannot be prevented via the `onWheel` handler.
-    document.addEventListener('wheel', this.onWheel, {passive: false});
+    document.addEventListener('wheel', onWheelHandler, {passive: false});
 
     // The op/asset graphs clip rendered nodes to the visible region, so changes to the
     // size of the viewport need to cause re-renders. Otherwise you expand the window
     // and see nothing in the newly visible areas.
     if (
-      this.element.current &&
-      this.element.current instanceof HTMLElement &&
+      elementHandler.current &&
+      elementHandler.current instanceof HTMLElement &&
       'ResizeObserver' in window
     ) {
       const RO = window['ResizeObserver'] as any;
-      this.resizeObserver = new RO(() => {
+      resizeObserverHandler = new RO(() => {
         window.requestAnimationFrame(() => {
-          this.forceUpdate();
+          forceUpdateHandler();
         });
       });
-      this.resizeObserver.observe(this.element.current);
+      resizeObserverHandler.observe(elementHandler.current);
     }
-  }
+  }, []);
 
-  componentWillUnmount() {
-    document.removeEventListener('wheel', this.onWheel);
-    this.resizeObserver?.disconnect();
-  }
+  useEffect(() => {
+    return () => {
+      document.removeEventListener('wheel', onWheelHandler);
+      resizeObserverHandler?.disconnect();
+    };
+  });
 
-  onWheel = (e: WheelEvent) => {
-    const container = this.element.current;
+  const onWheelHandler = useCallback((e: WheelEvent) => {
+    const container = elementHandler.current;
     // If the wheel event occurs within our SVG container, prevent it from zooming
     // the document, and handle it with the interactor.
     if (container && e.target instanceof Node && container.contains(e.target)) {
       e.preventDefault();
       e.stopPropagation();
-      this.props.interactor.onWheel(this, e);
+      props.interactor.onWheel(this, e);
     }
-  };
+  }, []);
 
-  cancelAnimations() {
-    if (this._animation) {
-      this._animation.cancel();
+  const cancelAnimationsHandler = useCallback(() => {
+    if (_animationHandler) {
+      _animationHandler.cancel();
     }
-  }
+  }, []);
 
-  focus() {
-    this.element.current?.focus();
-  }
+  const focusHandler = useCallback(() => {
+    elementHandler.current?.focus();
+  }, []);
 
-  scaleForSVGBounds(svgRegionWidth: number, svgRegionHeight: number) {
-    const el = this.element.current;
+  const scaleForSVGBoundsHandler = useCallback((svgRegionWidth: number, svgRegionHeight: number) => {
+    const el = elementHandler.current;
     if (!el) {
       return 1;
     }
@@ -312,18 +315,18 @@ export class SVGViewport extends React.Component<SVGViewportProps, SVGViewportSt
     const dw = ownerRect.width / svgRegionWidth;
     const dh = ownerRect.height / svgRegionHeight;
     return Math.min(dw, dh);
-  }
+  }, []);
 
-  autocenter(animate = false, scale?: number) {
-    const el = this.element.current!;
+  const autocenterHandler = useCallback((animate = false, scale?: number) => {
+    const el = elementHandler.current!;
     const ownerRect = {width: el.clientWidth, height: el.clientHeight};
-    const desiredScale = this.scaleForSVGBounds(this.props.graphWidth, this.props.graphHeight);
-    const minScale = this.getMinZoom();
+    const desiredScale = scaleForSVGBoundsHandler(props.graphWidth, props.graphHeight);
+    const minScale = getMinZoomHandler();
     const boundedScale =
-      scale || Math.max(Math.min(desiredScale, this.props.maxAutocenterZoom), minScale);
+      scale || Math.max(Math.min(desiredScale, props.maxAutocenterZoom), minScale);
 
     if (
-      this.state.scale < boundedScale &&
+      scale < boundedScale &&
       desiredScale !== boundedScale &&
       boundedScale === minScale
     ) {
@@ -333,136 +336,138 @@ export class SVGViewport extends React.Component<SVGViewportProps, SVGViewportSt
       return;
     }
     const target = {
-      x: -(this.props.graphWidth / 2) * boundedScale + ownerRect.width / 2,
-      y: -(this.props.graphHeight / 2) * boundedScale + ownerRect.height / 2,
+      x: -(props.graphWidth / 2) * boundedScale + ownerRect.width / 2,
+      y: -(props.graphHeight / 2) * boundedScale + ownerRect.height / 2,
       scale: boundedScale,
     };
 
     if (animate) {
-      this.smoothZoom(target);
+      smoothZoomHandler(target);
     } else {
-      this.setState(Object.assign(target, {minScale: boundedScale}));
+      setStateHandler(Object.assign(target, {minScale: boundedScale}));
     }
-  }
+  }, []);
 
-  screenToSVGCoords({x, y}: Point): Point {
-    const el = this.element.current!;
+  const screenToSVGCoordsHandler = useCallback(({x, y}: Point) => {
+    const el = elementHandler.current!;
     const {width, height} = el.getBoundingClientRect();
     return {
-      x: (-(this.state.x - width / 2) + x - width / 2) / this.state.scale,
-      y: (-(this.state.y - height / 2) + y - height / 2) / this.state.scale,
+      x: (-(x - width / 2) + x - width / 2) / scale,
+      y: (-(y - height / 2) + y - height / 2) / scale,
     };
-  }
+  }, []);
 
-  getOffsetXY(e: MouseEvent | React.MouseEvent): Point | null {
-    const el = this.element.current;
+  const getOffsetXYHandler = useCallback((e: MouseEvent | React.MouseEvent) => {
+    const el = elementHandler.current;
     if (!el) {
       return null;
     }
     const ownerRect = el.getBoundingClientRect();
     return {x: e.clientX - ownerRect.left, y: e.clientY - ownerRect.top};
-  }
+  }, []);
 
-  public shiftXY(dx: number, dy: number) {
-    const {x, y, scale} = this.state;
-    this.setState({x: x + dx, y: y + dy, scale});
-  }
+  const shiftXYHandler = useCallback((dx: number, dy: number) => {
+    setX(x + dx);
+    setY(y + dy);
+    setScale(scale);
+  }, []);
 
-  public adjustZoomRelativeToScreenPoint(nextScale: number, point: Point) {
-    const centerSVGCoord = this.screenToSVGCoords(point);
-    const {scale} = this.state;
-    let {x, y} = this.state;
+  const adjustZoomRelativeToScreenPointHandler = useCallback((nextScale: number, point: Point) => {
+    const centerSVGCoord = screenToSVGCoordsHandler(point);
+    let {x, y} = stateHandler;
     x = x + (centerSVGCoord.x * scale - centerSVGCoord.x * nextScale);
     y = y + (centerSVGCoord.y * scale - centerSVGCoord.y * nextScale);
-    this.setState({x, y, scale: nextScale});
-  }
+    setX(x);
+    setY(y);
+    setScale(nextScale);
+  }, []);
 
-  public zoomToSVGBox(box: IBounds, animate: boolean, newScale = this.state.scale) {
-    this.zoomToSVGCoords(box.x + box.width / 2, box.y + box.height / 2, animate, newScale);
-  }
+  const zoomToSVGBoxHandler = useCallback((box: IBounds, animate: boolean, newScale = this.state.scale) => {
+    zoomToSVGCoordsHandler(box.x + box.width / 2, box.y + box.height / 2, animate, newScale);
+  }, []);
 
-  public zoomToSVGCoords(x: number, y: number, animate: boolean, scale = this.state.scale) {
-    const el = this.element.current!;
-    const boundedScale = Math.max(Math.min(this.getMaxZoom(), scale), this.getMinZoom());
+  const zoomToSVGCoordsHandler = useCallback((x: number, y: number, animate: boolean, scale = this.state.scale) => {
+    const el = elementHandler.current!;
+    const boundedScale = Math.max(Math.min(getMaxZoomHandler(), scale), getMinZoomHandler());
 
     const ownerRect = el.getBoundingClientRect();
     x = -x * boundedScale + ownerRect.width / 2;
     y = -y * boundedScale + ownerRect.height / 2;
 
     if (animate) {
-      this.smoothZoom({x, y, scale: boundedScale});
+      smoothZoomHandler({x, y, scale: boundedScale});
     } else {
-      this.setState({x, y, scale: boundedScale});
+      setX(x);
+      setY(y);
+      setScale(boundedScale);
     }
-  }
+  }, []);
 
-  public smoothZoom(to: {x: number; y: number; scale: number}) {
-    const from = {scale: this.state.scale, x: this.state.x, y: this.state.y};
+  const smoothZoomHandler = useCallback((to: {x: number; y: number; scale: number}) => {
+    const from = {scale: scale, x: x, y: y};
 
-    if (this._animation) {
-      this._animation.cancel();
+    if (_animationHandler) {
+      _animationHandler.cancel();
     }
 
-    this._animation = animate(from, to, {
+    _animationHandler = animate(from, to, {
       step: (v: any) => {
-        this.setState({
-          x: v.x,
-          y: v.y,
-          scale: v.scale,
-        });
+        setX(v.x);
+        setY(v.y);
+        setScale(v.scale);
       },
       done: () => {
-        this.setState(to);
-        this._animation = null;
+        setStateHandler(to);
+        _animationHandler = null;
       },
     });
-  }
+  }, []);
 
-  public getMinZoom() {
-    if (this.props.graphHasNoMinimumZoom) {
+  const getMinZoomHandler = useCallback(() => {
+    if (props.graphHasNoMinimumZoom) {
       return Math.min(
         DEFAULT_MIN_ZOOM,
-        this.scaleForSVGBounds(this.props.graphWidth, this.props.graphHeight),
+        scaleForSVGBoundsHandler(props.graphWidth, props.graphHeight),
       );
     }
     return DEFAULT_MIN_ZOOM;
-  }
+  }, []);
 
-  public getMaxZoom() {
-    return this.props.maxZoom;
-  }
+  const getMaxZoomHandler = useCallback(() => {
+    return props.maxZoom;
+  }, []);
 
-  public getViewport() {
+  const getViewportHandler = useCallback(() => {
     let viewport = {top: 0, left: 0, right: 0, bottom: 0};
-    if (this.element.current) {
-      const el = this.element.current!;
+    if (elementHandler.current) {
+      const el = elementHandler.current!;
       const {width, height} = el.getBoundingClientRect();
       viewport = {
-        left: -this.state.x / this.state.scale,
-        top: -this.state.y / this.state.scale,
-        right: (-this.state.x + width) / this.state.scale,
-        bottom: (-this.state.y + height) / this.state.scale,
+        left: -x / scale,
+        top: -y / scale,
+        right: (-x + width) / scale,
+        bottom: (-y + height) / scale,
       };
     }
     return viewport;
-  }
+  }, []);
 
-  onZoomAndCenter = (event: React.MouseEvent<HTMLDivElement>) => {
-    const offsetXY = this.getOffsetXY(event);
+  const onZoomAndCenterHandler = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const offsetXY = getOffsetXYHandler(event);
     if (!offsetXY) {
       return;
     }
-    const offset = this.screenToSVGCoords(offsetXY);
-    const maxZoom = this.props.maxZoom || DEFAULT_ZOOM;
+    const offset = screenToSVGCoordsHandler(offsetXY);
+    const maxZoom = props.maxZoom || DEFAULT_ZOOM;
 
-    if (Math.abs(maxZoom - this.state.scale) < 0.01) {
-      this.zoomToSVGCoords(offset.x, offset.y, true, this.state.minScale);
+    if (Math.abs(maxZoom - scale) < 0.01) {
+      zoomToSVGCoordsHandler(offset.x, offset.y, true, minScale);
     } else {
-      this.zoomToSVGCoords(offset.x, offset.y, true, maxZoom);
+      zoomToSVGCoordsHandler(offset.x, offset.y, true, maxZoom);
     }
-  };
+  }, []);
 
-  onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+  const onKeyDownHandler = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.target && (e.target as HTMLElement).nodeName === 'INPUT') {
       return;
     }
@@ -479,29 +484,29 @@ export class SVGViewport extends React.Component<SVGViewportProps, SVGViewportSt
 
     e.preventDefault();
     e.stopPropagation();
-    this.props.onArrowKeyDown?.(e, dir);
-  };
+    props.onArrowKeyDown?.(e, dir);
+  }, []);
 
-  onDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
+  const onDoubleClickHandler = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     // Don't allow double-click events on the zoom slider to trigger this.
     if (event.target instanceof HTMLElement && event.target.closest('#zoom-slider-container')) {
       return;
     }
-    this.props.onDoubleClick && this.props.onDoubleClick(event);
-  };
+    props.onDoubleClick && props.onDoubleClick(event);
+  }, []);
 
-  onExportToSVG = async () => {
+  const onExportToSVGHandler = useCallback(async () => {
     const unclippedViewport = {
       top: 0,
       left: 0,
-      right: this.props.graphWidth,
-      bottom: this.props.graphHeight,
+      right: props.graphWidth,
+      bottom: props.graphHeight,
     };
 
     const div = document.createElement('div');
     document.getElementById('root')!.appendChild(div);
     ReactDOM.render(
-      <MemoryRouter>{this.props.children(this.state, unclippedViewport)}</MemoryRouter>,
+      <MemoryRouter>{props.children(stateHandler, unclippedViewport)}</MemoryRouter>,
       div,
     );
     const svg = div.querySelector('svg') as SVGElement;
@@ -517,40 +522,47 @@ export class SVGViewport extends React.Component<SVGViewportProps, SVGViewportSt
     a.setAttribute('href', URL.createObjectURL(blob));
     a.click();
     div.remove();
-  };
+  }, []);
 
-  render() {
-    const {children, onClick, interactor} = this.props;
-    const {x, y, scale} = this.state;
-    const dotsize = Math.max(7, 30 * scale);
+  const element = useRef(React.createRef());
+  const panzoom = useRef(null);
+  const _animation = useRef(null);
+  const _lastWheelTime = useRef(0);
+  const _lastWheelDir = useRef(0);
+  const resizeObserver = useRef(null);
+  const dotsize = Math.max(7, 30 * scale);
 
-    return (
+  return (
+    <div
+      ref={elementHandler}
+      style={Object.assign({}, SVGViewportStyles, {
+        backgroundPosition: `${x}px ${y}px`,
+        backgroundSize: `${dotsize}px`,
+      })}
+      onMouseDown={(e) => interactor.onMouseDown(this, e)}
+      onDoubleClick={onDoubleClickHandler}
+      onKeyDown={onKeyDownHandler}
+      onDragStart={(e) => e.preventDefault()}
+      onClick={onClick}
+      tabIndex={-1}
+    >
       <div
-        ref={this.element}
-        style={Object.assign({}, SVGViewportStyles, {
-          backgroundPosition: `${x}px ${y}px`,
-          backgroundSize: `${dotsize}px`,
-        })}
-        onMouseDown={(e) => interactor.onMouseDown(this, e)}
-        onDoubleClick={this.onDoubleClick}
-        onKeyDown={this.onKeyDown}
-        onDragStart={(e) => e.preventDefault()}
-        onClick={onClick}
-        tabIndex={-1}
+        style={{
+          transformOrigin: `top left`,
+          transform: `matrix(${scale}, 0, 0, ${scale}, ${x}, ${y})`,
+        }}
       >
-        <div
-          style={{
-            transformOrigin: `top left`,
-            transform: `matrix(${scale}, 0, 0, ${scale}, ${x}, ${y})`,
-          }}
-        >
-          {children(this.state, this.getViewport())}
-        </div>
-        {interactor.render && interactor.render(this)}
+        {children(stateHandler, getViewportHandler())}
       </div>
-    );
-  }
-}
+      {interactor.render && interactor.render(this)}
+    </div>
+  );
+};
+
+SVGViewport.Interactors = {
+  PanAndZoom: PanAndZoomInteractor,
+  None: NoneInteractor,
+};
 
 /*
 BG: Not using styled-components here because I need a `ref` to an actual DOM element.

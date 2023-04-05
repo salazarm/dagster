@@ -20,6 +20,8 @@ import {
 } from './common';
 import {OpGraphOpFragment} from './types/OpGraph.types';
 
+import { useRef, useCallback, useEffect } from 'react';
+
 const NoOp = () => {};
 
 interface OpGraphProps {
@@ -145,83 +147,87 @@ OpGraphContents.displayName = 'OpGraphContents';
 // so that OpNode can use shallow equality comparisons in shouldComponentUpdate.
 const EmptyHighlightedArray: never[] = [];
 
-export class OpGraph extends React.Component<OpGraphProps> {
-  viewportEl: React.RefObject<SVGViewport> = React.createRef();
+const OpGraph = (props: OpGraphProps) => {
+  const {
+    layout,
+    interactor,
+    jobName,
+    onClickBackground,
+    onDoubleClickOp
+  } = props;
 
-  argToOpLayout = (arg: OpNameOrPath) => {
+  useEffect(() => {
+    if (prevProps.parentOp !== props.parentOp) {
+      viewportElHandler.current!.cancelAnimations();
+      viewportElHandler.current!.autocenter();
+    }
+    if (prevProps.layout !== props.layout) {
+      viewportElHandler.current!.autocenter();
+    }
+    if (prevProps.selectedOp !== props.selectedOp && props.selectedOp) {
+      centerOpHandler(props.selectedOp);
+    }
+  }, []);
+
+  const argToOpLayoutHandler = useCallback((arg: OpNameOrPath) => {
     const lastName = 'name' in arg ? arg.name : arg.path[arg.path.length - 1];
-    return this.props.layout.nodes[lastName];
-  };
+    return props.layout.nodes[lastName];
+  }, []);
 
-  centerOp = (arg: OpNameOrPath) => {
-    const opLayout = this.argToOpLayout(arg);
-    if (opLayout && this.viewportEl.current) {
-      this.viewportEl.current.zoomToSVGBox(opLayout.bounds, true);
+  const centerOpHandler = useCallback((arg: OpNameOrPath) => {
+    const opLayout = argToOpLayoutHandler(arg);
+    if (opLayout && viewportElHandler.current) {
+      viewportElHandler.current.zoomToSVGBox(opLayout.bounds, true);
     }
-  };
+  }, []);
 
-  focusOnOp = (arg: OpNameOrPath) => {
-    const opLayout = this.argToOpLayout(arg);
-    if (opLayout && this.viewportEl.current) {
-      this.viewportEl.current?.zoomToSVGBox(opLayout.bounds, true, DETAIL_ZOOM);
+  const focusOnOpHandler = useCallback((arg: OpNameOrPath) => {
+    const opLayout = argToOpLayoutHandler(arg);
+    if (opLayout && viewportElHandler.current) {
+      viewportElHandler.current?.zoomToSVGBox(opLayout.bounds, true, DETAIL_ZOOM);
     }
-  };
+  }, []);
 
-  unfocus = (e: React.MouseEvent<any>) => {
-    this.viewportEl.current!.autocenter(true);
+  const unfocusHandler = useCallback((e: React.MouseEvent<any>) => {
+    viewportElHandler.current!.autocenter(true);
     e.stopPropagation();
-  };
+  }, []);
 
-  componentDidUpdate(prevProps: OpGraphProps) {
-    if (prevProps.parentOp !== this.props.parentOp) {
-      this.viewportEl.current!.cancelAnimations();
-      this.viewportEl.current!.autocenter();
+  const onArrowKeyDownHandler = useCallback((_e: React.KeyboardEvent<any>, dir: string) => {
+    const nextOp = closestNodeInDirection(props.layout, props.selectedOp?.name, dir);
+    if (nextOp && props.onClickOp) {
+      props.onClickOp({name: nextOp});
     }
-    if (prevProps.layout !== this.props.layout) {
-      this.viewportEl.current!.autocenter();
-    }
-    if (prevProps.selectedOp !== this.props.selectedOp && this.props.selectedOp) {
-      this.centerOp(this.props.selectedOp);
-    }
-  }
+  }, []);
 
-  onArrowKeyDown = (_e: React.KeyboardEvent<any>, dir: string) => {
-    const nextOp = closestNodeInDirection(this.props.layout, this.props.selectedOp?.name, dir);
-    if (nextOp && this.props.onClickOp) {
-      this.props.onClickOp({name: nextOp});
-    }
-  };
+  const viewportEl = useRef(React.createRef());
 
-  render() {
-    const {layout, interactor, jobName, onClickBackground, onDoubleClickOp} = this.props;
-
-    return (
-      <SVGViewport
-        ref={this.viewportEl}
-        key={jobName}
-        maxZoom={1.2}
-        interactor={interactor || SVGViewport.Interactors.PanAndZoom}
-        graphWidth={layout.width}
-        graphHeight={layout.height}
-        onClick={onClickBackground}
-        onDoubleClick={this.unfocus}
-        onArrowKeyDown={this.onArrowKeyDown}
-      >
-        {({scale}, viewportRect) => (
-          <SVGContainer width={layout.width} height={layout.height + 200}>
-            <OpGraphContents
-              {...this.props}
-              layout={layout}
-              minified={scale < DETAIL_ZOOM - 0.01}
-              onDoubleClickOp={onDoubleClickOp || this.focusOnOp}
-              viewportRect={viewportRect}
-            />
-          </SVGContainer>
-        )}
-      </SVGViewport>
-    );
-  }
-}
+  return (
+    <SVGViewport
+      ref={viewportElHandler}
+      key={jobName}
+      maxZoom={1.2}
+      interactor={interactor || SVGViewport.Interactors.PanAndZoom}
+      graphWidth={layout.width}
+      graphHeight={layout.height}
+      onClick={onClickBackground}
+      onDoubleClick={unfocusHandler}
+      onArrowKeyDown={onArrowKeyDownHandler}
+    >
+      {({scale}, viewportRect) => (
+        <SVGContainer width={layout.width} height={layout.height + 200}>
+          <OpGraphContents
+            {...props}
+            layout={layout}
+            minified={scale < DETAIL_ZOOM - 0.01}
+            onDoubleClickOp={onDoubleClickOp || focusOnOpHandler}
+            viewportRect={viewportRect}
+          />
+        </SVGContainer>
+      )}
+    </SVGViewport>
+  );
+};
 
 export const OP_GRAPH_OP_FRAGMENT = gql`
   fragment OpGraphOpFragment on Solid {

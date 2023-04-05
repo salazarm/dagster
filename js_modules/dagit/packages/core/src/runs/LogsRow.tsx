@@ -21,6 +21,8 @@ import {LogsRowStructuredContent} from './LogsRowStructuredContent';
 import {IRunMetadataDict} from './RunMetadataProvider';
 import {LogsRowStructuredFragment, LogsRowUnstructuredFragment} from './types/LogsRow.types';
 
+import { useCallback } from 'react';
+
 interface StructuredProps {
   node: LogsRowStructuredFragment;
   metadata: IRunMetadataDict;
@@ -32,10 +34,13 @@ interface StructuredState {
   expanded: boolean;
 }
 
-export class Structured extends React.Component<StructuredProps, StructuredState> {
-  onExpand = () => {
-    const {node, metadata} = this.props;
+const Structured = props => {
+  const {
+    node,
+    metadata
+  } = props;
 
+  const onExpandHandler = useCallback(() => {
     if (node.__typename === 'ExecutionStepFailureEvent') {
       showCustomAlert({
         title: 'Error',
@@ -72,20 +77,18 @@ export class Structured extends React.Component<StructuredProps, StructuredState
         ),
       });
     }
-  };
+  }, []);
 
-  render() {
-    return (
-      <CellTruncationProvider style={this.props.style} onExpand={this.onExpand}>
-        <StructuredMemoizedContent
-          node={this.props.node}
-          metadata={this.props.metadata}
-          highlighted={this.props.highlighted}
-        />
-      </CellTruncationProvider>
-    );
-  }
-}
+  return (
+    <CellTruncationProvider style={props.style} onExpand={onExpandHandler}>
+      <StructuredMemoizedContent
+        node={props.node}
+        metadata={props.metadata}
+        highlighted={props.highlighted}
+      />
+    </CellTruncationProvider>
+  );
+};
 
 export const LOGS_ROW_STRUCTURED_FRAGMENT = gql`
   fragment LogsRowStructuredFragment on DagsterRunEvent {
@@ -230,26 +233,24 @@ interface UnstructuredProps {
   metadata: IRunMetadataDict;
 }
 
-export class Unstructured extends React.Component<UnstructuredProps> {
-  onExpand = () => {
+const Unstructured = (props: UnstructuredProps) => {
+  const onExpandHandler = useCallback(() => {
     showCustomAlert({
       title: 'Log',
-      body: <div style={{whiteSpace: 'pre-wrap'}}>{this.props.node.message}</div>,
+      body: <div style={{whiteSpace: 'pre-wrap'}}>{props.node.message}</div>,
     });
-  };
+  }, []);
 
-  render() {
-    return (
-      <CellTruncationProvider style={this.props.style} onExpand={this.onExpand}>
-        <UnstructuredMemoizedContent
-          node={this.props.node}
-          highlighted={this.props.highlighted}
-          metadata={this.props.metadata}
-        />
-      </CellTruncationProvider>
-    );
-  }
-}
+  return (
+    <CellTruncationProvider style={props.style} onExpand={onExpandHandler}>
+      <UnstructuredMemoizedContent
+        node={props.node}
+        highlighted={props.highlighted}
+        metadata={props.metadata}
+      />
+    </CellTruncationProvider>
+  );
+};
 
 export const LOGS_ROW_UNSTRUCTURED_FRAGMENT = gql`
   fragment LogsRowUnstructuredFragment on DagsterRunEvent {

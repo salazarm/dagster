@@ -3,6 +3,8 @@ import Ansi from 'ansi-to-react';
 import * as React from 'react';
 import styled, {createGlobalStyle} from 'styled-components/macro';
 
+import { useRef, useEffect, useCallback } from 'react';
+
 const MAX_STREAMING_LOG_BYTES = 5242880; // 5 MB
 const TRUNCATE_PREFIX = '\u001b[33m...logs truncated...\u001b[39m\n';
 const SCROLLER_LINK_TIMEOUT_MS = 3000;
@@ -124,107 +126,109 @@ interface IScrollContainerProps {
   onScrollDown?: (position: number) => void;
 }
 
-export class ScrollContainer extends React.Component<IScrollContainerProps> {
-  private container = React.createRef<HTMLDivElement>();
-  private lastScroll = 0;
+const ScrollContainer = (props: IScrollContainerProps) => {
+  const {
+    onScrollUp,
+    onScrollDown,
+    content,
+    className
+  } = props;
 
-  componentDidMount() {
-    this.scrollToBottom();
-    if (this.container.current) {
-      this.container.current.focus();
-      this.container.current.addEventListener('scroll', this.onScroll);
+  useEffect(() => {
+    scrollToBottomHandler();
+    if (containerHandler.current) {
+      containerHandler.current.focus();
+      containerHandler.current.addEventListener('scroll', onScrollHandler);
     }
-  }
+  }, []);
 
-  getSnapshotBeforeUpdate() {
-    if (!this.container.current) {
+  useEffect(() => {
+    if (shouldScroll) {
+      scrollToBottomHandler();
+    }
+    if (props.isSelected && !_props.isSelected) {
+      containerHandler.current && containerHandler.current.focus();
+    }
+  }, []);
+
+  const getSnapshotBeforeUpdateHandler = useCallback(() => {
+    if (!containerHandler.current) {
       return false;
     }
-    const {scrollHeight, scrollTop, offsetHeight} = this.container.current;
+    const {scrollHeight, scrollTop, offsetHeight} = containerHandler.current;
     const shouldScroll = offsetHeight + scrollTop >= scrollHeight;
     return shouldScroll;
-  }
+  }, []);
 
-  componentDidUpdate(_props: any, _state: any, shouldScroll: boolean) {
-    if (shouldScroll) {
-      this.scrollToBottom();
-    }
-    if (this.props.isSelected && !_props.isSelected) {
-      this.container.current && this.container.current.focus();
-    }
-  }
-
-  onScroll = () => {
-    if (!this.container.current || !this.props.isSelected) {
+  const onScrollHandler = useCallback(() => {
+    if (!containerHandler.current || !props.isSelected) {
       return;
     }
-    const {onScrollUp, onScrollDown} = this.props;
 
-    const {scrollHeight, scrollTop, offsetHeight} = this.container.current;
+    const {scrollHeight, scrollTop, offsetHeight} = containerHandler.current;
     const position = scrollTop / (scrollHeight - offsetHeight);
-    if (this.container.current.scrollTop < this.lastScroll) {
+    if (containerHandler.current.scrollTop < lastScrollHandler) {
       onScrollUp && onScrollUp(position);
     } else {
       onScrollDown && onScrollDown(position);
     }
-    this.lastScroll = this.container.current.scrollTop;
-  };
+    lastScrollHandler = containerHandler.current.scrollTop;
+  }, []);
 
-  focus() {
-    const node = this.container.current;
+  const focusHandler = useCallback(() => {
+    const node = containerHandler.current;
     if (!node) {
       return;
     }
 
     node.focus();
-  }
+  }, []);
 
-  scrollToBottom() {
-    const node = this.container.current;
+  const scrollToBottomHandler = useCallback(() => {
+    const node = containerHandler.current;
     if (!node) {
       return;
     }
 
     node.scrollTop = node.scrollHeight - node.offsetHeight;
-  }
+  }, []);
 
-  scrollToTop() {
-    const node = this.container.current;
+  const scrollToTopHandler = useCallback(() => {
+    const node = containerHandler.current;
     if (!node) {
       return;
     }
 
     node.scrollTop = 0;
     node.focus();
-  }
+  }, []);
 
-  render() {
-    const {content, className} = this.props;
-    if (!content) {
-      return (
-        <div className={className} ref={this.container}>
-          <ContentContainer style={{justifyContent: 'center', alignItems: 'center'}}>
-            {content == null ? 'No log file available' : 'No output'}
-          </ContentContainer>
-        </div>
-      );
-    }
-
+  const container = useRef(React.createRef<HTMLDivElement>());
+  const lastScroll = useRef(0);
+  if (!content) {
     return (
-      <div className={className} style={{outline: 'none'}} ref={this.container} tabIndex={0}>
-        <ContentContainer>
-          <LineNumbers content={content} />
-          <Content>
-            <SolarizedColors />
-            <Ansi linkify={false} useClasses>
-              {content}
-            </Ansi>
-          </Content>
+      <div className={className} ref={containerHandler}>
+        <ContentContainer style={{justifyContent: 'center', alignItems: 'center'}}>
+          {content == null ? 'No log file available' : 'No output'}
         </ContentContainer>
       </div>
     );
   }
-}
+
+  return (
+    <div className={className} style={{outline: 'none'}} ref={containerHandler} tabIndex={0}>
+      <ContentContainer>
+        <LineNumbers content={content} />
+        <Content>
+          <SolarizedColors />
+          <Ansi linkify={false} useClasses>
+            {content}
+          </Ansi>
+        </Content>
+      </ContentContainer>
+    </div>
+  );
+};
 
 const LineNumbers = (props: IScrollContainerProps) => {
   const {content} = props;
